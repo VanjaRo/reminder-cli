@@ -1,9 +1,13 @@
 package controllers
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/VanjaRo/reminder-cli/server/models"
+	"github.com/VanjaRo/reminder-cli/server/transport"
 )
 
 const paramsKey = "ps"
@@ -124,6 +128,25 @@ func (h *RegExMux) Put(pattern string, handler http.Handler) {
 
 func (h *RegExMux) Delete(pattern string, handler http.Handler) {
 	h.Handle(http.MethodDelete, pattern, handler)
+}
+
+func (h RegExMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.routesMap = map[string]*route{}
+	for _, route := range h.routes {
+		key := route.populate(r)
+		h.routesMap[key] = route
+	}
+	key := r.Method + r.URL.Path
+	route, ok := h.routesMap[key]
+	if !ok {
+		transport.SendError(w, models.NotFoundError{})
+		return
+	}
+	ctx := r.Context()
+	if len(route.params) != 0 {
+		ctx = context.WithValue(ctx, ctxKey(paramsKey), route.params)
+	}
+	route.handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func splitUrl(s string) []string {
